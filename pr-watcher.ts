@@ -16,6 +16,7 @@ type Pr = {
   state: string
   title: string
   reviewDecision: string
+  mergeable: string
   repo: string
 }
 
@@ -54,7 +55,7 @@ async function getCurrentBranch(): Promise<string | null> {
 async function getPr(): Promise<Pr | null> {
   const r = await sh('gh', [
     'pr', 'view',
-    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision',
+    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision,mergeable',
   ])
   if (!r.ok) return null
   let data: any
@@ -73,6 +74,7 @@ async function getPr(): Promise<Pr | null> {
     state: data.state ?? '',
     title: data.title ?? '',
     reviewDecision: data.reviewDecision ?? '',
+    mergeable: data.mergeable ?? '',
     repo: `${owner}/${name}`,
   }
 }
@@ -135,9 +137,9 @@ const mcp = new Server(
     instructions:
       'Events from this channel arrive as <channel source="pr-watcher" kind="..." ...>. ' +
       'Possible kind values: startup, no_pr, pr_changed, commits_pushed, ci_status, review, ' +
-      'review_comment, issue_comment, pr_state. Meta attributes vary per kind and may include: ' +
+      'review_comment, issue_comment, pr_state, mergeable. Meta attributes vary per kind and may include: ' +
       'pr, repo, url, head_sha, old_sha, new_sha, branch, prev_pr, check, state, bucket, ' +
-      'author, path, line. The body contains a short factual summary or the included text.',
+      'mergeable, author, path, line. The body contains a short factual summary or the included text.',
   },
 )
 
@@ -241,6 +243,13 @@ async function tick(): Promise<number> {
         },
       )
     }
+    if (pr.mergeable === 'CONFLICTING') {
+      await emit('mergeable', `PR #${pr.number} has merge conflicts`, {
+        pr: String(pr.number),
+        mergeable: pr.mergeable,
+        url: pr.url,
+      })
+    }
     return cadenceFor(snap.checks, true)
   }
 
@@ -268,6 +277,18 @@ async function tick(): Promise<number> {
       emit('pr_state', `PR #${pr.number} is now ${pr.state}`, {
         pr: String(pr.number),
         state: pr.state,
+        url: pr.url,
+      }),
+    )
+  }
+
+  const knownPrev = prev.mergeable && prev.mergeable !== 'UNKNOWN'
+  const knownCur = pr.mergeable && pr.mergeable !== 'UNKNOWN'
+  if (knownPrev && knownCur && prev.mergeable !== pr.mergeable) {
+    events.push(() =>
+      emit('mergeable', `PR #${pr.number} is now ${pr.mergeable}`, {
+        pr: String(pr.number),
+        mergeable: pr.mergeable,
         url: pr.url,
       }),
     )
