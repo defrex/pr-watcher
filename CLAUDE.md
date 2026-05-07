@@ -37,7 +37,7 @@ Bodies are short and factual. Don't add "you should…" language.
 
 | call                                                            | for                       |
 | --------------------------------------------------------------- | ------------------------- |
-| `gh pr view --json number,url,headRefOid,headRefName,state,...` | PR meta + head SHA        |
+| `gh pr view --json number,url,headRefOid,headRefName,state,...` | PR meta + head SHA. **Note: `baseRepository` is NOT a valid field** — owner/repo is parsed out of `url` instead. |
 | `gh pr checks --json name,state,bucket,link`                    | CI checks                 |
 | `gh api repos/{owner}/{repo}/pulls/{n}/reviews`                 | reviews                   |
 | `gh api repos/{owner}/{repo}/pulls/{n}/comments`                | inline review comments    |

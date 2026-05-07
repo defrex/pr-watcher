@@ -54,17 +54,20 @@ async function getCurrentBranch(): Promise<string | null> {
 async function getPr(): Promise<Pr | null> {
   const r = await sh('gh', [
     'pr', 'view',
-    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision,baseRepository',
+    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision',
   ])
   if (!r.ok) return null
   let data: any
   try { data = JSON.parse(r.stdout) } catch { return null }
-  const owner = data?.baseRepository?.owner?.login ?? ''
-  const name = data?.baseRepository?.name ?? ''
+  const m = typeof data?.url === 'string'
+    ? data.url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\//)
+    : null
+  const owner = m?.[1] ?? ''
+  const name = m?.[2] ?? ''
   if (!owner || !name || typeof data.number !== 'number') return null
   return {
     number: data.number,
-    url: data.url ?? '',
+    url: data.url,
     headSha: data.headRefOid ?? '',
     branch: data.headRefName ?? '',
     state: data.state ?? '',
