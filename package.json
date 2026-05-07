@@ -1,0 +1,13 @@
+{
+  "name": "pr-watcher",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Claude Code channel that watches the current PR and pushes events into the session.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

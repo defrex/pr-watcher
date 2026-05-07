@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pr-watcher": {
+      "command": "bun",
+      "args": ["./pr-watcher.ts"]
+    }
+  }
+}
