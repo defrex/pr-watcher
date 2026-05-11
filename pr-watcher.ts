@@ -17,6 +17,7 @@ type Pr = {
   title: string
   reviewDecision: string
   mergeable: string
+  mergeStateStatus: string
   repo: string
 }
 
@@ -55,7 +56,7 @@ async function getCurrentBranch(): Promise<string | null> {
 async function getPr(): Promise<Pr | null> {
   const r = await sh('gh', [
     'pr', 'view',
-    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision,mergeable',
+    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision,mergeable,mergeStateStatus',
   ])
   if (!r.ok) return null
   let data: any
@@ -75,6 +76,7 @@ async function getPr(): Promise<Pr | null> {
     title: data.title ?? '',
     reviewDecision: data.reviewDecision ?? '',
     mergeable: data.mergeable ?? '',
+    mergeStateStatus: data.mergeStateStatus ?? '',
     repo: `${owner}/${name}`,
   }
 }
@@ -137,8 +139,8 @@ const mcp = new Server(
     instructions:
       'Events from this channel arrive as <channel source="pr-watcher" kind="..." ...>. ' +
       'Possible kind values: startup, no_pr, pr_changed, commits_pushed, ci_status, review, ' +
-      'review_comment, issue_comment, pr_state, mergeable. Meta attributes vary per kind and may include: ' +
-      'pr, repo, url, head_sha, old_sha, new_sha, branch, prev_pr, check, state, bucket, ' +
+      'review_comment, issue_comment, pr_state, mergeable, merge_state. Meta attributes vary per kind and may include: ' +
+      'pr, repo, url, head_sha, old_sha, new_sha, branch, prev_pr, check, state, prev_state, bucket, ' +
       'mergeable, author, path, line. The body contains a short factual summary or the included text.',
   },
 )
@@ -288,6 +290,22 @@ async function tick(): Promise<number> {
     events.push(() =>
       emit('mergeable', `PR #${pr.number} is now ${pr.mergeable}`, {
         pr: String(pr.number),
+        mergeable: pr.mergeable,
+        url: pr.url,
+      }),
+    )
+  }
+
+  const prevState = prev.mergeStateStatus
+  const curState = pr.mergeStateStatus
+  const knownPrevState = prevState && prevState !== 'UNKNOWN'
+  const knownCurState = curState && curState !== 'UNKNOWN'
+  if (knownPrevState && knownCurState && prevState !== curState) {
+    events.push(() =>
+      emit('merge_state', `PR #${pr.number} merge state: ${prevState} → ${curState}`, {
+        pr: String(pr.number),
+        state: curState,
+        prev_state: prevState,
         mergeable: pr.mergeable,
         url: pr.url,
       }),

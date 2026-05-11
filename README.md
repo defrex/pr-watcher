@@ -22,6 +22,7 @@ For the PR associated with the current branch:
 - Top-level PR comments
 - PR state changes (closed / merged)
 - Mergeability changes (merge conflict appeared / resolved)
+- Merge state changes (PR falls behind base, becomes blocked, becomes clean, etc.)
 - Branch swap to a different PR (or to a branch with no PR)
 
 Polling cadence adapts to what's going on:
@@ -107,6 +108,7 @@ All events arrive in Claude's context as `<channel source="pr-watcher" kind="...
 | `issue_comment`  | a new top-level PR comment                      | `pr`, `author`, `url`                   |
 | `pr_state`       | PR state changed (e.g. closed / merged)         | `pr`, `state`, `url`                    |
 | `mergeable`      | mergeability changed (conflict appeared/resolved) | `pr`, `mergeable`, `url`              |
+| `merge_state`    | merge state changed (e.g. `CLEAN`→`BEHIND`, `BEHIND`→`DIRTY`) | `pr`, `state`, `prev_state`, `mergeable`, `url` |
 
 The watcher does **not** tell Claude how to react. If you want behavior like *"when CI fails, pull the failing logs and try a fix"*, encode it in a project-level skill or `CLAUDE.md`. The init skill scaffolds a starting point.
 
