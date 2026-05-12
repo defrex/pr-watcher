@@ -29,7 +29,11 @@ State is **in-memory only**. On startup or after switching to a different PR, th
 
 ## Events emitted
 
-`startup`, `no_pr`, `pr_opened`, `pr_changed`, `commits_pushed`, `ci_status`, `review`, `review_comment`, `issue_comment`, `pr_state`. See `README.md` for meta attributes.
+`startup`, `no_pr`, `pr_opened`, `pr_changed`, `commits_pushed`, `ci_status`, `review`, `review_comment`, `issue_comment`, `pr_state`, `branch_status`. See `README.md` for meta attributes.
+
+`branch_status` is the only signal for "branch is behind base" / "branch has merge conflicts". It's derived from ground-truth signals (`gh api repos/.../compare` for `behind_by`, `pr.mergeable === 'CONFLICTING'` for `conflict`) — *not* from `mergeStateStatus`, which conflates behind-base, conflicts, required-check failures, and branch-protection rules into one opaque enum. Don't reintroduce events keyed on `mergeStateStatus`.
+
+Last-known `behind` / `conflict` are tracked in `snap.lastKnownBehind` / `snap.lastKnownConflict`, updated only when a fresh observation is non-null. That's the structural fix for the UNKNOWN trap: `mergeable: UNKNOWN` ticks (common after a push while GitHub recomputes) don't clobber the last real value, so `MERGEABLE → UNKNOWN → CONFLICTING` transitions still fire an event.
 
 Bodies are short and factual. Don't add "you should…" language.
 
@@ -37,11 +41,12 @@ Bodies are short and factual. Don't add "you should…" language.
 
 | call                                                            | for                       |
 | --------------------------------------------------------------- | ------------------------- |
-| `gh pr view --json number,url,headRefOid,headRefName,state,...` | PR meta + head SHA. **Note: `baseRepository` is NOT a valid field** — owner/repo is parsed out of `url` instead. |
+| `gh pr view --json number,url,headRefOid,headRefName,baseRefName,state,...` | PR meta + head SHA + base ref. **Note: `baseRepository` is NOT a valid field** — owner/repo is parsed out of `url` instead. |
 | `gh pr checks --json name,state,bucket,link`                    | CI checks                 |
 | `gh api repos/{owner}/{repo}/pulls/{n}/reviews`                 | reviews                   |
 | `gh api repos/{owner}/{repo}/pulls/{n}/comments`                | inline review comments    |
 | `gh api repos/{owner}/{repo}/issues/{n}/comments`               | top-level PR comments     |
+| `gh api repos/{owner}/{repo}/compare/{base}...{headSha}`        | `behind_by` for `branch_status` |
 
 `gh pr checks` exposes `state` (e.g. `IN_PROGRESS`, `SUCCESS`) and `bucket` (`pass`/`fail`/`pending`/`skipping`/`cancel`). Cadence and "is the check still running" decisions key off `bucket === 'pending'`.
 

@@ -13,15 +13,17 @@ type Pr = {
   url: string
   headSha: string
   branch: string
+  baseRef: string
   state: string
   title: string
   reviewDecision: string
   mergeable: string
-  mergeStateStatus: string
   repo: string
 }
 
 type CheckState = { state: string; bucket: string; url: string }
+
+type BranchStatus = { behind: number | null; conflict: boolean | null }
 
 type Snapshot = {
   branch: string | null
@@ -31,6 +33,8 @@ type Snapshot = {
   reviewCommentIds: Set<number>
   issueCommentIds: Set<number>
   noPrAnnouncedForBranch: string | null
+  lastKnownBehind: number | null
+  lastKnownConflict: boolean | null
 }
 
 type ShellResult = { ok: boolean; stdout: string; stderr: string }
@@ -56,7 +60,7 @@ async function getCurrentBranch(): Promise<string | null> {
 async function getPr(): Promise<Pr | null> {
   const r = await sh('gh', [
     'pr', 'view',
-    '--json', 'number,url,headRefOid,headRefName,state,title,reviewDecision,mergeable,mergeStateStatus',
+    '--json', 'number,url,headRefOid,headRefName,baseRefName,state,title,reviewDecision,mergeable',
   ])
   if (!r.ok) return null
   let data: any
@@ -72,13 +76,32 @@ async function getPr(): Promise<Pr | null> {
     url: data.url,
     headSha: data.headRefOid ?? '',
     branch: data.headRefName ?? '',
+    baseRef: data.baseRefName ?? '',
     state: data.state ?? '',
     title: data.title ?? '',
     reviewDecision: data.reviewDecision ?? '',
     mergeable: data.mergeable ?? '',
-    mergeStateStatus: data.mergeStateStatus ?? '',
     repo: `${owner}/${name}`,
   }
+}
+
+async function getBranchStatus(pr: Pr): Promise<BranchStatus> {
+  let conflict: boolean | null = null
+  if (pr.mergeable === 'CONFLICTING') conflict = true
+  else if (pr.mergeable === 'MERGEABLE') conflict = false
+
+  let behind: number | null = null
+  if (pr.baseRef && pr.headSha) {
+    const r = await sh('gh', ['api', `repos/${pr.repo}/compare/${pr.baseRef}...${pr.headSha}`])
+    if (r.ok) {
+      try {
+        const data = JSON.parse(r.stdout)
+        if (typeof data?.behind_by === 'number') behind = data.behind_by
+      } catch {}
+    }
+  }
+
+  return { behind, conflict }
 }
 
 async function getChecks(): Promise<Map<string, CheckState>> {
@@ -130,6 +153,8 @@ const snap: Snapshot = {
   reviewCommentIds: new Set(),
   issueCommentIds: new Set(),
   noPrAnnouncedForBranch: null,
+  lastKnownBehind: null,
+  lastKnownConflict: null,
 }
 
 const mcp = new Server(
@@ -139,9 +164,9 @@ const mcp = new Server(
     instructions:
       'Events from this channel arrive as <channel source="pr-watcher" kind="..." ...>. ' +
       'Possible kind values: startup, no_pr, pr_opened, pr_changed, commits_pushed, ci_status, review, ' +
-      'review_comment, issue_comment, pr_state, mergeable, merge_state. Meta attributes vary per kind and may include: ' +
-      'pr, repo, url, head_sha, old_sha, new_sha, branch, prev_pr, check, state, prev_state, bucket, ' +
-      'mergeable, author, path, line. The body contains a short factual summary or the included text.',
+      'review_comment, issue_comment, pr_state, branch_status. Meta attributes vary per kind and may include: ' +
+      'pr, repo, url, head_sha, old_sha, new_sha, branch, prev_pr, check, state, bucket, base, behind, ' +
+      'conflict, author, path, line. The body contains a short factual summary or the included text.',
   },
 )
 
@@ -176,6 +201,31 @@ function resetForNoPr() {
   snap.reviewIds.clear()
   snap.reviewCommentIds.clear()
   snap.issueCommentIds.clear()
+  snap.lastKnownBehind = null
+  snap.lastKnownConflict = null
+}
+
+function branchStatusBody(pr: Pr, behind: number | null, conflict: boolean | null): string {
+  const base = pr.baseRef || 'base'
+  const parts: string[] = []
+  if (behind !== null) {
+    parts.push(behind === 0 ? `up to date with ${base}` : `${behind} commit${behind === 1 ? '' : 's'} behind ${base}`)
+  }
+  if (conflict !== null) {
+    parts.push(conflict ? 'has merge conflicts' : 'has no merge conflicts')
+  }
+  if (parts.length === 0) return `PR #${pr.number} branch status unknown`
+  return `PR #${pr.number}: ${parts.join(', ')}`
+}
+
+function emitBranchStatus(pr: Pr): Promise<void> {
+  return emit('branch_status', branchStatusBody(pr, snap.lastKnownBehind, snap.lastKnownConflict), {
+    pr: String(pr.number),
+    base: pr.baseRef,
+    behind: snap.lastKnownBehind !== null ? String(snap.lastKnownBehind) : '',
+    conflict: snap.lastKnownConflict !== null ? String(snap.lastKnownConflict) : '',
+    url: pr.url,
+  })
 }
 
 async function bootstrapForPr(pr: Pr) {
@@ -257,12 +307,13 @@ async function tick(): Promise<number> {
         },
       )
     }
-    if (pr.mergeable === 'CONFLICTING') {
-      await emit('mergeable', `PR #${pr.number} has merge conflicts`, {
-        pr: String(pr.number),
-        mergeable: pr.mergeable,
-        url: pr.url,
-      })
+    const bs = await getBranchStatus(pr)
+    if (bs.behind !== null) snap.lastKnownBehind = bs.behind
+    if (bs.conflict !== null) snap.lastKnownConflict = bs.conflict
+    const initialBehind = snap.lastKnownBehind !== null && snap.lastKnownBehind > 0
+    const initialConflict = snap.lastKnownConflict === true
+    if (initialBehind || initialConflict) {
+      await emitBranchStatus(pr)
     }
     return cadenceFor(snap.checks, true)
   }
@@ -296,32 +347,16 @@ async function tick(): Promise<number> {
     )
   }
 
-  const knownPrev = prev.mergeable && prev.mergeable !== 'UNKNOWN'
-  const knownCur = pr.mergeable && pr.mergeable !== 'UNKNOWN'
-  if (knownPrev && knownCur && prev.mergeable !== pr.mergeable) {
-    events.push(() =>
-      emit('mergeable', `PR #${pr.number} is now ${pr.mergeable}`, {
-        pr: String(pr.number),
-        mergeable: pr.mergeable,
-        url: pr.url,
-      }),
-    )
-  }
-
-  const prevState = prev.mergeStateStatus
-  const curState = pr.mergeStateStatus
-  const knownPrevState = prevState && prevState !== 'UNKNOWN'
-  const knownCurState = curState && curState !== 'UNKNOWN'
-  if (knownPrevState && knownCurState && prevState !== curState) {
-    events.push(() =>
-      emit('merge_state', `PR #${pr.number} merge state: ${prevState} → ${curState}`, {
-        pr: String(pr.number),
-        state: curState,
-        prev_state: prevState,
-        mergeable: pr.mergeable,
-        url: pr.url,
-      }),
-    )
+  const bs = await getBranchStatus(pr)
+  const prevBehind = snap.lastKnownBehind
+  const prevConflict = snap.lastKnownConflict
+  if (bs.behind !== null) snap.lastKnownBehind = bs.behind
+  if (bs.conflict !== null) snap.lastKnownConflict = bs.conflict
+  if (
+    snap.lastKnownBehind !== prevBehind ||
+    snap.lastKnownConflict !== prevConflict
+  ) {
+    events.push(() => emitBranchStatus(pr))
   }
 
   snap.pr = pr
