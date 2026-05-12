@@ -138,7 +138,7 @@ const mcp = new Server(
     capabilities: { experimental: { 'claude/channel': {} } },
     instructions:
       'Events from this channel arrive as <channel source="pr-watcher" kind="..." ...>. ' +
-      'Possible kind values: startup, no_pr, pr_changed, commits_pushed, ci_status, review, ' +
+      'Possible kind values: startup, no_pr, pr_opened, pr_changed, commits_pushed, ci_status, review, ' +
       'review_comment, issue_comment, pr_state, mergeable, merge_state. Meta attributes vary per kind and may include: ' +
       'pr, repo, url, head_sha, old_sha, new_sha, branch, prev_pr, check, state, prev_state, bucket, ' +
       'mergeable, author, path, line. The body contains a short factual summary or the included text.',
@@ -231,6 +231,18 @@ async function tick(): Promise<number> {
           head_sha: pr.headSha,
           url: pr.url,
           prev_pr: String(prev.number),
+        },
+      )
+    } else if (snap.noPrAnnouncedForBranch === branch) {
+      snap.noPrAnnouncedForBranch = null
+      await emit(
+        'pr_opened',
+        `PR #${pr.number} opened in ${pr.repo} at ${pr.headSha.slice(0, 7)}. ${pr.title}`,
+        {
+          pr: String(pr.number),
+          repo: pr.repo,
+          head_sha: pr.headSha,
+          url: pr.url,
         },
       )
     } else {

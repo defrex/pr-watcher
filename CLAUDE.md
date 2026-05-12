@@ -29,7 +29,7 @@ State is **in-memory only**. On startup or after switching to a different PR, th
 
 ## Events emitted
 
-`startup`, `no_pr`, `pr_changed`, `commits_pushed`, `ci_status`, `review`, `review_comment`, `issue_comment`, `pr_state`. See `README.md` for meta attributes.
+`startup`, `no_pr`, `pr_opened`, `pr_changed`, `commits_pushed`, `ci_status`, `review`, `review_comment`, `issue_comment`, `pr_state`. See `README.md` for meta attributes.
 
 Bodies are short and factual. Don't add "you should…" language.
 

@@ -24,6 +24,7 @@ For the PR associated with the current branch:
 - Mergeability changes (merge conflict appeared / resolved)
 - Merge state changes (PR falls behind base, becomes blocked, becomes clean, etc.)
 - Branch swap to a different PR (or to a branch with no PR)
+- A PR being opened on the branch the watcher is already on
 
 Polling cadence adapts to what's going on:
 
@@ -33,7 +34,7 @@ Polling cadence adapts to what's going on:
 | PR exists, all checks done  | 60 s       |
 | current branch has no PR    | 5 min      |
 
-State is in-memory only. On startup (or after switching PRs) the watcher snapshots current state and emits `startup` / `pr_changed` — it does **not** backfill events for items that already exist.
+State is in-memory only. On startup (or after switching PRs, or when a PR appears on the watched branch) the watcher snapshots current state and emits `startup` / `pr_changed` / `pr_opened` — it does **not** backfill events for items that already exist.
 
 ## Requirements
 
@@ -100,6 +101,7 @@ All events arrive in Claude's context as `<channel source="pr-watcher" kind="...
 | ---------------- | ----------------------------------------------- | --------------------------------------- |
 | `startup`        | watcher started and detected a PR               | `pr`, `repo`, `head_sha`, `url`         |
 | `no_pr`          | current branch has no open PR (announced once)  | `branch`                                |
+| `pr_opened`      | a PR appeared on the watched branch after `no_pr` | `pr`, `repo`, `head_sha`, `url`       |
 | `pr_changed`     | branch swapped to a different PR                | `pr`, `prev_pr`, `repo`, `head_sha`     |
 | `commits_pushed` | head ref moved                                  | `pr`, `old_sha`, `new_sha`, `url`       |
 | `ci_status`      | a check changed state                           | `pr`, `check`, `state`, `bucket`, `url` |
