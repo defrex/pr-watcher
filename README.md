@@ -32,7 +32,7 @@ Polling cadence adapts to what's going on:
 | --------------------------- | ---------- |
 | any check is `pending`      | 15 s       |
 | PR exists, all checks done  | 60 s       |
-| current branch has no PR    | 5 min      |
+| current branch has no PR    | 60 s       |
 
 State is in-memory only. On startup (or after switching PRs, or when a PR appears on the watched branch) the watcher snapshots current state and emits `startup` / `pr_changed` / `pr_opened` — it does **not** backfill events for items that already exist.
 

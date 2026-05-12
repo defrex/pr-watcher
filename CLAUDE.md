@@ -25,7 +25,7 @@ State is **in-memory only**. On startup or after switching to a different PR, th
 
 - `FAST_MS = 15_000` — any check has `bucket === 'pending'`
 - `NORMAL_MS = 60_000` — PR exists, all checks settled
-- `IDLE_MS = 300_000` — no PR for current branch (or detached HEAD)
+- `IDLE_MS = 60_000` — no PR for current branch (or detached HEAD)
 
 ## Events emitted
 

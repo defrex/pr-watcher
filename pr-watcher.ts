@@ -4,7 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 const FAST_MS = 15_000
 const NORMAL_MS = 60_000
-const IDLE_MS = 5 * 60_000
+const IDLE_MS = 60_000
 
 const log = (...args: unknown[]) => console.error('[pr-watcher]', ...args)
 
